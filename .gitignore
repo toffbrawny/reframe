@@ -52,3 +52,7 @@ Reframe-v*.apk
 
 # Kotlin compiler daemon session files (Android build artifact)
 /android/.kotlin/
+
+# Promo image context notes (for the author, not repo content)
+/App Screenshots/*.txt
+/App Screenshots/.DS_Store
