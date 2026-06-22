@@ -27,9 +27,13 @@ class CaptureScreen extends StatefulWidget {
 class _CaptureScreenState extends State<CaptureScreen> {
   CameraController? _controller;
   Future<void>? _initFuture;
+  List<CameraDescription> _cameras = [];
+  int _cameraIndex = 0;
   AlignmentMode _mode = AlignmentMode.ghost;
   double _ghostOpacity = 0.5;
   bool _capturing = false;
+  FlashMode _flash = FlashMode.off;
+  bool _switching = false;
 
   @override
   void initState() {
@@ -46,21 +50,90 @@ class _CaptureScreenState extends State<CaptureScreen> {
       }
       return;
     }
-    final cameras = await availableCameras();
-    if (cameras.isEmpty) return;
+    _cameras = await availableCameras();
+    if (_cameras.isEmpty) return;
     // Prefer the rear camera for scene re-shots.
-    final cam = cameras.firstWhere(
-      (c) => c.lensDirection == CameraLensDirection.back,
-      orElse: () => cameras.first,
-    );
-    _controller = CameraController(
+    _cameraIndex = _cameras
+        .indexWhere((c) => c.lensDirection == CameraLensDirection.back);
+    if (_cameraIndex < 0) _cameraIndex = 0;
+    await _startController(_cameras[_cameraIndex]);
+  }
+
+  Future<void> _startController(CameraDescription cam) async {
+    final c = CameraController(
       cam,
       ResolutionPreset.high,
       enableAudio: false,
       imageFormatGroup: ImageFormatGroup.jpeg,
     );
-    await _controller!.initialize();
+    await c.initialize();
+    // Re-apply the current flash preference; ignore if unsupported by this sensor.
+    try {
+      await c.setFlashMode(_flash);
+    } catch (_) {}
+    if (!mounted) {
+      await c.dispose();
+      return;
+    }
+    _controller = c;
     if (mounted) setState(() {});
+  }
+
+  /// Switches to the next available camera (rear <-> selfie). `setDescription`
+  /// re-initializes the existing controller in place, so we keep one controller
+  /// and the preview texture updates seamlessly.
+  Future<void> _switchCamera() async {
+    if (_cameras.length < 2 || _switching) return;
+    setState(() => _switching = true);
+    final next = (_cameraIndex + 1) % _cameras.length;
+    final ctrl = _controller;
+    try {
+      await ctrl?.setDescription(_cameras[next]);
+      _cameraIndex = next;
+      // Flash may not be supported on the new sensor (e.g. selfie) — re-apply
+      // and fall back to off if it errors.
+      try {
+        await ctrl?.setFlashMode(_flash);
+      } catch (_) {
+        if (mounted) setState(() => _flash = FlashMode.off);
+      }
+    } catch (_) {}
+    if (mounted) setState(() => _switching = false);
+  }
+
+  Future<void> _cycleFlash() async {
+    const order = [
+      FlashMode.off,
+      FlashMode.auto,
+      FlashMode.always,
+      FlashMode.torch,
+    ];
+    final next = order[(order.indexOf(_flash) + 1) % order.length];
+    final ctrl = _controller;
+    if (ctrl == null || !ctrl.value.isInitialized) return;
+    try {
+      await ctrl.setFlashMode(next);
+      setState(() => _flash = next);
+    } catch (_) {
+      // Not supported on this sensor (e.g. selfie). Stay silent.
+    }
+  }
+
+  /// Tap-to-focus: normalize the tap to [0,1] over the preview and set the focus
+  /// + exposure points, re-triggering autofocus. Mirrors the official camera
+  /// plugin example's `onViewFinderTap`.
+  Future<void> _onPreviewTap(TapDownDetails d, Size size) async {
+    final ctrl = _controller;
+    if (ctrl == null || !ctrl.value.isInitialized || size.isEmpty) return;
+    final offset = Offset(
+      (d.localPosition.dx / size.width).clamp(0.0, 1.0),
+      (d.localPosition.dy / size.height).clamp(0.0, 1.0),
+    );
+    try {
+      await ctrl.setFocusMode(FocusMode.auto);
+      if (ctrl.value.focusPointSupported) await ctrl.setFocusPoint(offset);
+      if (ctrl.value.exposurePointSupported) await ctrl.setExposurePoint(offset);
+    } catch (_) {}
   }
 
   @override
@@ -97,6 +170,24 @@ class _CaptureScreenState extends State<CaptureScreen> {
         backgroundColor: Colors.black.withValues(alpha: 0.4),
         foregroundColor: Colors.white,
         actions: [
+          if (_cameras.length > 1)
+            IconButton(
+              tooltip: 'Switch camera',
+              onPressed: _switching ? null : _switchCamera,
+              icon: _switching
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Icon(Icons.cameraswitch, color: Colors.white),
+            ),
+          IconButton(
+            tooltip: 'Flash: ${_flashLabel(_flash)}',
+            onPressed: _cycleFlash,
+            icon: Icon(_flashIcon(_flash), color: Colors.white),
+          ),
           if (hasRef)
             TextButton.icon(
               onPressed: () => setState(() => _mode = _mode.next),
@@ -109,28 +200,39 @@ class _CaptureScreenState extends State<CaptureScreen> {
       body: FutureBuilder<void>(
         future: _initFuture,
         builder: (context, snap) {
-          if (_controller == null || !_controller!.value.isInitialized) {
+          final ctrl = _controller;
+          if (ctrl == null || !ctrl.value.isInitialized || _switching) {
             return const Center(
                 child: CircularProgressIndicator(color: Colors.white));
           }
           return Stack(
             fit: StackFit.expand,
             children: [
-              // Center-cropped camera preview filling the screen.
-              ClipRect(
-                child: OverflowBox(
-                  maxWidth: double.infinity,
-                  maxHeight: double.infinity,
-                  child: FittedBox(
-                    fit: BoxFit.cover,
-                    // Sensor is landscape; swap dims for a portrait device.
-                    child: SizedBox(
-                      width: _controller!.value.previewSize!.height,
-                      height: _controller!.value.previewSize!.width,
-                      child: CameraPreview(_controller!),
+              // Center-cropped camera preview filling the screen; tap to focus.
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final size =
+                      Size(constraints.maxWidth, constraints.maxHeight);
+                  return GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTapDown: (d) => _onPreviewTap(d, size),
+                    child: ClipRect(
+                      child: OverflowBox(
+                        maxWidth: double.infinity,
+                        maxHeight: double.infinity,
+                        child: FittedBox(
+                          fit: BoxFit.cover,
+                          // Sensor is landscape; swap dims for a portrait device.
+                          child: SizedBox(
+                            width: ctrl.value.previewSize!.height,
+                            height: ctrl.value.previewSize!.width,
+                            child: CameraPreview(ctrl),
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
-                ),
+                  );
+                },
               ),
               if (hasRef)
                 AlignmentOverlay(
@@ -204,5 +306,19 @@ class _CaptureScreenState extends State<CaptureScreen> {
         AlignmentMode.off => Icons.visibility_off,
         AlignmentMode.ghost => Icons.visibility,
         AlignmentMode.outlineGrid => Icons.grid_on,
+      };
+
+  IconData _flashIcon(FlashMode f) => switch (f) {
+        FlashMode.off => Icons.flash_off,
+        FlashMode.auto => Icons.flash_auto,
+        FlashMode.always => Icons.flash_on,
+        FlashMode.torch => Icons.highlight,
+      };
+
+  String _flashLabel(FlashMode f) => switch (f) {
+        FlashMode.off => 'off',
+        FlashMode.auto => 'auto',
+        FlashMode.always => 'on',
+        FlashMode.torch => 'torch',
       };
 }

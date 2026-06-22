@@ -23,8 +23,13 @@ class CapsuleProvider extends ChangeNotifier {
   bool get loading => _loading;
 
   /// Ticks once a second so countdowns on visible screens update live.
-  final Stream<DateTime> clock = Stream.periodic(
-      const Duration(seconds: 1), (_) => DateTime.now());
+  ///
+  /// Broadcast so multiple screens can listen (home + detail) — a plain
+  /// `Stream.periodic` is single-subscription and throws "stream has already
+  /// been listened to" the second time a screen subscribes.
+  late final Stream<DateTime> clock = Stream.periodic(
+          const Duration(seconds: 1), (_) => DateTime.now())
+      .asBroadcastStream();
 
   Future<void> _bootstrap() async {
     _capsules
