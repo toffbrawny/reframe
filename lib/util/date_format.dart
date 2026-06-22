@@ -17,3 +17,24 @@ String formatDate(DateTime dt) =>
     DateFormat('MMM d, y · HH:mm').format(dt);
 
 String formatDateShort(DateTime dt) => DateFormat('MMM d, y').format(dt);
+
+/// Human-friendly span for a duration, e.g. "1 yr 2 mo", "3 mo 12 d",
+/// "12 d 4 h", "6 h 20 m", "35 m".
+String formatSpan(Duration d) {
+  if (d.isNegative) d = -d;
+  final days = d.inDays;
+  if (days >= 365) {
+    final y = days ~/ 365;
+    final remDays = days % 365;
+    final mo = remDays ~/ 30;
+    return mo > 0 ? '$y yr $mo mo' : '$y yr';
+  }
+  if (days >= 30) {
+    final mo = days ~/ 30;
+    final remDays = days % 30;
+    return remDays > 0 ? '$mo mo $remDays d' : '$mo mo';
+  }
+  if (days >= 1) return '$days d ${d.inHours.remainder(24)} h';
+  if (d.inHours >= 1) return '${d.inHours} h ${d.inMinutes.remainder(60)} m';
+  return '${d.inMinutes} m';
+}

@@ -4,14 +4,13 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../capture/capture_screen.dart';
 import '../data/capsule_repository.dart';
 import '../models/capsule.dart';
 import '../state/capsule_provider.dart';
 import '../util/date_format.dart';
-import '../util/gif_exporter.dart';
+import 'gallery_screen.dart';
 
 class CapsuleDetailScreen extends StatefulWidget {
   const CapsuleDetailScreen({super.key, required this.capsuleId});
@@ -24,7 +23,6 @@ class CapsuleDetailScreen extends StatefulWidget {
 
 class _CapsuleDetailScreenState extends State<CapsuleDetailScreen> {
   late StreamSubscription<DateTime> _clockSub;
-  bool _exporting = false;
 
   @override
   void initState() {
@@ -43,36 +41,6 @@ class _CapsuleDetailScreenState extends State<CapsuleDetailScreen> {
   Capsule? _capsule(BuildContext context) =>
       context.read<CapsuleProvider>().capsules
           .firstWhereOrNull((c) => c.id == widget.capsuleId);
-
-  Future<void> _exportGif(Capsule c) async {
-    setState(() => _exporting = true);
-    try {
-      final all = [c.beforeFrame, ...c.afterFrames];
-      final bytess = <Uint8List>[];
-      for (final f in all) {
-        bytess.add(await CapsuleRepository.instance.readFrameBytes(f));
-      }
-      final path = await GifExporter.export(bytess);
-      if (path == null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Nothing to export yet.')));
-        }
-        return;
-      }
-      await SharePlus.instance.share(ShareParams(
-        files: [XFile(path)],
-        text: '${c.title} — Reframe timeline',
-      ));
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Export failed: $e')));
-      }
-    } finally {
-      if (mounted) setState(() => _exporting = false);
-    }
-  }
 
   Future<void> _confirmDelete(Capsule c) async {
     final provider = context.read<CapsuleProvider>();
@@ -116,13 +84,15 @@ class _CapsuleDetailScreenState extends State<CapsuleDetailScreen> {
         title: Text(c.title),
         actions: [
           IconButton(
-            tooltip: 'Export GIF',
-            onPressed: _exporting ? null : () => _exportGif(c),
-            icon: _exporting
-                ? const SizedBox(
-                    width: 20, height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2))
-                : const Icon(Icons.gif_box),
+            tooltip: 'Browse photos',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) =>
+                    GalleryScreen(capsuleId: widget.capsuleId),
+              ),
+            ),
+            icon: const Icon(Icons.photo_library),
           ),
           IconButton(
             tooltip: 'Delete',
@@ -135,14 +105,30 @@ class _CapsuleDetailScreenState extends State<CapsuleDetailScreen> {
         padding: const EdgeInsets.all(16),
         children: [
           _StatusHero(status: status, remaining: remaining, c: c),
+          const SizedBox(height: 16),
+          _StatsCard(c: c),
           const SizedBox(height: 24),
           Text('Timeline (${c.frames.length} photos)',
               style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 4),
+          const Text('Tap a photo to view it full-screen',
+              style: TextStyle(color: Colors.white38, fontSize: 12)),
           const SizedBox(height: 12),
-          for (final f in [c.beforeFrame, ...c.afterFrames])
+          for (var i = 0; i < [c.beforeFrame, ...c.afterFrames].length; i++)
             Padding(
               padding: const EdgeInsets.only(bottom: 16),
-              child: _TimelineRow(frame: f),
+              child: _TimelineRow(
+                frame: [c.beforeFrame, ...c.afterFrames][i],
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => FrameViewerScreen(
+                      capsuleId: widget.capsuleId,
+                      startIndex: i,
+                    ),
+                  ),
+                ),
+              ),
             ),
           if (kDebugMode) ...[
             const Divider(),
@@ -366,15 +352,76 @@ class _FinalizedView extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 8),
-        const Text('Export the GIF to share the whole journey.'),
+        const Text('Browse the timeline and export your photos.'),
       ],
     );
   }
 }
 
+/// Smart stats summarizing the capsule's timeline: how many photos, when the
+/// first and last were captured, the overall span, and the average gap between
+/// re-shots.
+class _StatsCard extends StatelessWidget {
+  const _StatsCard({required this.c});
+
+  final Capsule c;
+
+  @override
+  Widget build(BuildContext context) {
+    final first = c.beforeFrame.capturedAt;
+    final last = c.referenceFrame?.capturedAt ?? first;
+    final span = last.difference(first);
+    final afterCount = c.afterFrames.length;
+    final theme = Theme.of(context);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.insights, color: theme.colorScheme.primary),
+                const SizedBox(width: 8),
+                Text('Capsule stats', style: theme.textTheme.titleMedium),
+              ],
+            ),
+            const SizedBox(height: 12),
+            _row('Photos', '${c.frames.length}'),
+            _row('Re-shots', '$afterCount'),
+            _row('First capture', formatDate(first)),
+            if (afterCount > 0) ...[
+              _row('Last capture', formatDate(last)),
+              _row('Time span', formatSpan(span)),
+              _row(
+                  'Avg gap',
+                  formatSpan(Duration(
+                      microseconds: span.inMicroseconds ~/ afterCount))),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _row(String label, String value) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 3),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(label, style: const TextStyle(color: Colors.white60)),
+            Text(value,
+                style: const TextStyle(fontWeight: FontWeight.w600)),
+          ],
+        ),
+      );
+}
+
 class _TimelineRow extends StatefulWidget {
-  const _TimelineRow({required this.frame});
+  const _TimelineRow({required this.frame, this.onTap});
   final Frame frame;
+  final VoidCallback? onTap;
 
   @override
   State<_TimelineRow> createState() => _TimelineRowState();
@@ -396,52 +443,59 @@ class _TimelineRowState extends State<_TimelineRow> {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: SizedBox(
-            width: 90,
-            height: 120,
-            child: _bytes == null
-                ? const ColoredBox(
-                    color: Colors.white12,
-                    child: Center(child: CircularProgressIndicator(strokeWidth: 2)))
-                : Image.memory(_bytes!, fit: BoxFit.cover),
+    return InkWell(
+      onTap: widget.onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: SizedBox(
+              width: 90,
+              height: 120,
+              child: _bytes == null
+                  ? const ColoredBox(
+                      color: Colors.white12,
+                      child: Center(child: CircularProgressIndicator(strokeWidth: 2)))
+                  : Image.memory(_bytes!, fit: BoxFit.cover),
+            ),
           ),
-        ),
-        const SizedBox(width: 14),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: widget.frame.kind == 'before'
-                      ? Colors.amber.withValues(alpha: 0.25)
-                      : Colors.greenAccent.withValues(alpha: 0.25),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  widget.frame.kind == 'before' ? 'BEFORE' : 'AFTER',
-                  style: TextStyle(
-                    fontSize: 11,
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
                     color: widget.frame.kind == 'before'
-                        ? Colors.amber
-                        : Colors.greenAccent,
-                    fontWeight: FontWeight.w700,
+                        ? Colors.amber.withValues(alpha: 0.25)
+                        : Colors.greenAccent.withValues(alpha: 0.25),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    widget.frame.kind == 'before' ? 'BEFORE' : 'AFTER',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: widget.frame.kind == 'before'
+                          ? Colors.amber
+                          : Colors.greenAccent,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 8),
-              Text(formatDate(widget.frame.capturedAt),
-                  style: Theme.of(context).textTheme.bodyMedium),
-            ],
+                const SizedBox(height: 8),
+                Text(formatDate(widget.frame.capturedAt),
+                    style: Theme.of(context).textTheme.bodyMedium),
+                const SizedBox(height: 4),
+                const Text('Tap to view',
+                    style: TextStyle(color: Colors.white38, fontSize: 12)),
+              ],
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
