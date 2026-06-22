@@ -10,6 +10,7 @@ import '../models/capsule.dart';
 import '../state/capsule_provider.dart';
 import '../util/date_format.dart';
 import 'capsule_detail_screen.dart';
+import 'delete_capsule_dialog.dart';
 import 'help_about_screen.dart';
 import 'new_capsule_screen.dart';
 
@@ -124,19 +125,56 @@ class _CapsuleCard extends StatelessWidget {
   final Capsule capsule;
   final DateTime now;
 
+  void _open(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CapsuleDetailScreen(capsuleId: capsule.id!),
+      ),
+    );
+  }
+
+  Future<void> _showCardMenu(BuildContext context) async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.open_in_new),
+              title: const Text('Open capsule'),
+              onTap: () => Navigator.pop(ctx, 'open'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline, color: Colors.red),
+              title: const Text('Delete capsule',
+                  style: TextStyle(color: Colors.red)),
+              onTap: () => Navigator.pop(ctx, 'delete'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!context.mounted) return;
+    if (action == 'open') {
+      _open(context);
+    } else if (action == 'delete') {
+      final provider = context.read<CapsuleProvider>();
+      if (await showDeleteCapsuleDialog(context, capsule)) {
+        await provider.delete(capsule.id!);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final status = capsule.statusAt(now);
     final ref = capsule.referenceFrame;
     return GestureDetector(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => CapsuleDetailScreen(capsuleId: capsule.id!),
-          ),
-        );
-      },
+      onTap: () => _open(context),
+      onLongPress: () => _showCardMenu(context),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(16),
         child: Stack(

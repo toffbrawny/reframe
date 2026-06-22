@@ -2,6 +2,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 class HelpAboutScreen extends StatelessWidget {
   const HelpAboutScreen({super.key});
@@ -158,22 +159,43 @@ class _SectionCard extends StatelessWidget {
   }
 }
 
-class _AboutCard extends StatelessWidget {
+class _AboutCard extends StatefulWidget {
   const _AboutCard({required this.theme});
   final ThemeData theme;
 
   @override
+  State<_AboutCard> createState() => _AboutCardState();
+}
+
+class _AboutCardState extends State<_AboutCard> {
+  PackageInfo? _info;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    _info = await PackageInfo.fromPlatform();
+    if (mounted) setState(() {});
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final info = _info;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('About', style: theme.textTheme.titleMedium),
+            Text('About', style: widget.theme.textTheme.titleMedium),
             const SizedBox(height: 10),
             const _Row(label: 'App', value: 'Reframe'),
-            const _Row(label: 'Version', value: '0.2.0'),
+            _Row(
+                label: 'Version',
+                value: info == null ? '…' : '${info.version} (build ${info.buildNumber})'),
             const _Row(label: 'Built for', value: 'Android'),
             const SizedBox(height: 10),
             const Text(

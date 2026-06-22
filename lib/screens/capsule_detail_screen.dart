@@ -10,6 +10,7 @@ import '../data/capsule_repository.dart';
 import '../models/capsule.dart';
 import '../state/capsule_provider.dart';
 import '../util/date_format.dart';
+import 'delete_capsule_dialog.dart';
 import 'gallery_screen.dart';
 
 class CapsuleDetailScreen extends StatefulWidget {
@@ -44,22 +45,7 @@ class _CapsuleDetailScreenState extends State<CapsuleDetailScreen> {
 
   Future<void> _confirmDelete(Capsule c) async {
     final provider = context.read<CapsuleProvider>();
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete capsule?'),
-        content: Text(
-            'This permanently deletes "${c.title}" and all ${c.frames.length} photos.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton.tonal(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-    if (ok == true) {
+    if (await showDeleteCapsuleDialog(context, c)) {
       await provider.delete(c.id!);
       if (mounted) Navigator.pop(context);
     }
