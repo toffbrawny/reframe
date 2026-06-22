@@ -44,12 +44,12 @@ class CapsuleProvider extends ChangeNotifier {
   Future<Capsule> create({
     required String title,
     required Uint8List beforeBytes,
-    required Preset preset,
+    required Duration lockDuration,
   }) async {
     final c = await CapsuleRepository.instance.create(
       title: title,
       beforeBytes: beforeBytes,
-      preset: preset,
+      lockDuration: lockDuration,
     );
     _capsules.insert(0, c);
     notifyListeners();
@@ -68,8 +68,8 @@ class CapsuleProvider extends ChangeNotifier {
     return c;
   }
 
-  Future<Capsule> relock(int capsuleId, Preset preset) async {
-    final c = await CapsuleRepository.instance.relock(capsuleId, preset);
+  Future<Capsule> relock(int capsuleId, Duration lockDuration) async {
+    final c = await CapsuleRepository.instance.relock(capsuleId, lockDuration);
     _replace(c);
     return c;
   }

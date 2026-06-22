@@ -49,3 +49,6 @@ app.*.map.json
 *.idsig
 *.aab
 Reframe-v*.apk
+
+# Kotlin compiler daemon session files (Android build artifact)
+/android/.kotlin/

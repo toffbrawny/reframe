@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -18,7 +19,7 @@ class NewCapsuleScreen extends StatefulWidget {
 class _NewCapsuleScreenState extends State<NewCapsuleScreen> {
   Uint8List? _beforeBytes;
   final _titleCtrl = TextEditingController();
-  Preset? _preset;
+  Duration? _lockDuration;
   bool _saving = false;
 
   Future<void> _captureBefore() async {
@@ -33,14 +34,14 @@ class _NewCapsuleScreenState extends State<NewCapsuleScreen> {
 
   Future<void> _save() async {
     if (_beforeBytes == null || _titleCtrl.text.trim().isEmpty ||
-        _preset == null) {
+        _lockDuration == null) {
       return;
     }
     setState(() => _saving = true);
     await context.read<CapsuleProvider>().create(
           title: _titleCtrl.text.trim(),
           beforeBytes: _beforeBytes!,
-          preset: _preset!,
+          lockDuration: _lockDuration!,
         );
     if (mounted) Navigator.pop(context);
   }
@@ -107,16 +108,37 @@ class _NewCapsuleScreenState extends State<NewCapsuleScreen> {
               for (final p in Preset.values)
                 ChoiceChip(
                   label: Text(p.label),
-                  selected: _preset == p,
-                  onSelected: (_) => setState(() => _preset = p),
+                  selected: _lockDuration == p.duration,
+                  onSelected: (_) => setState(() => _lockDuration = p.duration),
                 ),
             ],
           ),
+          if (kDebugMode) ...[
+            const SizedBox(height: 12),
+            Text('Debug presets (rapid testing)',
+                style: TextStyle(
+                    color: Theme.of(context).colorScheme.error,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 10,
+              children: [
+                for (final d in DebugPreset.values)
+                  ChoiceChip(
+                    label: Text(d.label),
+                    selected: _lockDuration == d.duration,
+                    onSelected: (_) =>
+                        setState(() => _lockDuration = d.duration),
+                  ),
+              ],
+            ),
+          ],
           const SizedBox(height: 32),
           FilledButton.icon(
             onPressed: (_beforeBytes == null ||
                     _titleCtrl.text.trim().isEmpty ||
-                    _preset == null ||
+                    _lockDuration == null ||
                     _saving)
                 ? null
                 : _save,

@@ -310,7 +310,7 @@ class _AwaitingRelockView extends StatelessWidget {
             for (final p in Preset.values)
               FilledButton.tonalIcon(
                 onPressed: () =>
-                    context.read<CapsuleProvider>().relock(c.id!, p),
+                    context.read<CapsuleProvider>().relock(c.id!, p.duration),
                 icon: const Icon(Icons.lock),
                 label: Text(p.label),
               ),
@@ -321,6 +321,29 @@ class _AwaitingRelockView extends StatelessWidget {
             ),
           ],
         ),
+        if (kDebugMode) ...[
+          const SizedBox(height: 12),
+          Text('Debug relock (rapid testing)',
+              style: TextStyle(
+                  color: Theme.of(context).colorScheme.error,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final d in DebugPreset.values)
+                FilledButton.tonalIcon(
+                  onPressed: () => context
+                      .read<CapsuleProvider>()
+                      .relock(c.id!, d.duration),
+                  icon: const Icon(Icons.lock_clock),
+                  label: Text(d.label),
+                ),
+            ],
+          ),
+        ],
       ],
     );
   }

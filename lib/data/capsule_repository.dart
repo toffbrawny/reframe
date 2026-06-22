@@ -48,17 +48,20 @@ class CapsuleRepository {
   }
 
   /// Creates a new capsule from its before photo. Returns the reloaded capsule.
+  ///
+  /// [lockDuration] is the actual countdown length — callers pass a [Preset]
+  /// duration in release, or a [DebugPreset] duration in debug builds.
   Future<Capsule> create({
     required String title,
     required Uint8List beforeBytes,
-    required Preset preset,
+    required Duration lockDuration,
   }) async {
     final db = await AppDb.instance.db;
     final now = DateTime.now();
     final capsule = Capsule(
       title: title,
       createdAt: now,
-      unlockAt: now.add(preset.duration),
+      unlockAt: now.add(lockDuration),
     );
     final id = await db.insert('capsules', capsule.toMap());
 
@@ -94,10 +97,10 @@ class CapsuleRepository {
     return _byId(capsuleId);
   }
 
-  /// Re-locks a capsule for another [preset] period starting now.
-  Future<Capsule> relock(int capsuleId, Preset preset) async {
+  /// Re-locks a capsule for another [lockDuration] starting now.
+  Future<Capsule> relock(int capsuleId, Duration lockDuration) async {
     final db = await AppDb.instance.db;
-    final unlockAt = DateTime.now().add(preset.duration);
+    final unlockAt = DateTime.now().add(lockDuration);
     await db.update('capsules', {'unlock_at': unlockAt.toIso8601String()},
         where: 'id = ?', whereArgs: [capsuleId]);
     return _byId(capsuleId);

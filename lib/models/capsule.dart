@@ -21,6 +21,21 @@ enum Preset {
   final String short;
 }
 
+/// Short lock durations for debug builds only — let the countdown tick down in
+/// seconds so the full create → lock → unlock → capture loop can be exercised
+/// without waiting days. Only referenced from `kDebugMode` UI; release builds
+/// never see these.
+enum DebugPreset {
+  tenSec(Duration(seconds: 10), label: '10s'),
+  thirtySec(Duration(seconds: 30), label: '30s'),
+  twoMin(Duration(minutes: 2), label: '2m');
+
+  const DebugPreset(this.duration, {required this.label});
+
+  final Duration duration;
+  final String label;
+}
+
 /// A single photo in a capsule's timeline.
 ///
 /// [kind] is `before` for the origin shot, `after` for each successive capture.
