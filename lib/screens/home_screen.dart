@@ -10,6 +10,7 @@ import '../models/capsule.dart';
 import '../state/capsule_provider.dart';
 import '../util/date_format.dart';
 import 'capsule_detail_screen.dart';
+import 'help_about_screen.dart';
 import 'new_capsule_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -44,7 +45,19 @@ class _HomeScreenState extends State<HomeScreen> {
     final now = DateTime.now();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Reframe')),
+      appBar: AppBar(
+        title: const Text('Reframe'),
+        actions: [
+          IconButton(
+            tooltip: 'Help & About',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const HelpAboutScreen()),
+            ),
+            icon: const Icon(Icons.help_outline),
+          ),
+        ],
+      ),
       body: provider.loading
           ? const Center(child: CircularProgressIndicator())
           : capsules.isEmpty
