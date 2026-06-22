@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Allows FileProvider to share files from the app's cache directory
+         (where the GIF exporter writes its temp output) and external cache. -->
+    <cache-path name="cache" path="."/>
+    <external-cache-path name="external-cache" path="."/>
+    <files-path name="files" path="."/>
+</paths>
